@@ -185,14 +185,17 @@ fun BorrowScreen(state: AppState) {
         }
 
         // ---------- status filters + add ----------
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(selected = filter == 0, onClick = { filter = 0 }, label = { Text("All") })
-            FilterChip(selected = filter == 1, onClick = { filter = 1 }, label = { Text("Pending") })
-            FilterChip(selected = filter == 2, onClick = { filter = 2 }, label = { Text("Settled") })
-            Spacer(Modifier.weight(1f))
-            Button(onClick = { showAdd = true }) {
-                Icon(Icons.Default.Add, null, Modifier.size(16.dp))
-                Text("+ New")
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(selected = filter == 0, onClick = { filter = 0 }, label = { Text("All", maxLines = 1) })
+            FilterChip(selected = filter == 1, onClick = { filter = 1 }, label = { Text("Pending", maxLines = 1) })
+            FilterChip(selected = filter == 2, onClick = { filter = 2 }, label = { Text("Settled", maxLines = 1) })
+            Spacer(Modifier.width(2.dp))
+            Button(onClick = { showAdd = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp)) {
+                Text("+ New", maxLines = 1, softWrap = false)
             }
         }
 

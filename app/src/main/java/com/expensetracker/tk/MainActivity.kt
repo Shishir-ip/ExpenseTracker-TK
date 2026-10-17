@@ -346,6 +346,8 @@ private fun BottomNavBar(tabs: List<Tab>, currentRoute: String?, onSelect: (Stri
                 }
                 Row(Modifier.fillMaxSize()) {
                     tabs.forEachIndexed { index, t ->
+                        // centre gap BEFORE the 3rd tab so the FAB floats between History and Insights
+                        if (index == 2) Spacer(Modifier.weight(1f))
                         val selected = currentRoute == t.route
                         val interaction = remember { MutableInteractionSource() }
                         Column(
@@ -365,12 +367,11 @@ private fun BottomNavBar(tabs: List<Tab>, currentRoute: String?, onSelect: (Stri
                                 t.label,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
                             )
                         }
                     }
-                    // centre gap for the docked FAB
-                    Spacer(Modifier.weight(1f))
                 }
             }
             Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
