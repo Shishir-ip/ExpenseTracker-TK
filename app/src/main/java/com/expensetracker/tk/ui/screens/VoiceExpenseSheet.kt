@@ -1,5 +1,6 @@
 package com.expensetracker.tk.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -125,7 +126,23 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
     }
 
     // start listening as soon as the sheet opens (assistant shortcut flows straight here)
-    LaunchedEffect(Unit) { startListening() }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            startListening()
+        } else {
+            error = "Microphone access is needed for voice logging. Grant it in Settings → Apps → Expense Tracker → Permissions, then tap the mic."
+        }
+    }
+
+    fun ensureMicAndStart() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) startListening() else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
+
+    // start listening as soon as the sheet opens (asks mic permission first)
+    LaunchedEffect(Unit) { ensureMicAndStart() }
 
     Column(
         Modifier
@@ -191,7 +208,7 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = { startListening() }, enabled = !busy) {
+            OutlinedButton(onClick = { ensureMicAndStart() }, enabled = !busy) {
                 Icon(Icons.Default.Mic, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(if (transcript == null) "Listen again" else "Say another")

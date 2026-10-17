@@ -164,6 +164,10 @@ class Prefs(context: Context) {
         savedFilters = arr.toString()
     }
 
+    var notifPermissionAsked: Boolean
+        get() = sp.getBoolean("notif_perm_asked", false)
+        set(v) = sp.edit().putBoolean("notif_perm_asked", v).apply()
+
     // ---- misc ----
     var lastSync: Long
         get() = sp.getLong("last_sync", 0)

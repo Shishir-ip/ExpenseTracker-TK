@@ -2,6 +2,7 @@ package com.expensetracker.tk
 
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -144,6 +145,20 @@ fun Root() {
     if (!onboarded) {
         OnboardingScreen(state, onDone = { state.setOnboarded(true) })
         return
+    }
+
+    // ask notification permission once for new users (Android 13+)
+    val notifPermission = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { state.prefs.notifPermissionAsked = true }
+    LaunchedEffect(ui.onboarded) {
+        if (ui.onboarded && !state.prefs.notifPermissionAsked) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                state.prefs.notifPermissionAsked = true
+            }
+        }
     }
 
     // Lock gate: default OFF. Only shows when the user enabled it in Settings and hasn't unlocked this session.
