@@ -87,7 +87,7 @@ enum class TxnSort(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun TransactionsScreen(state: AppState, onEdit: (String) -> Unit) {
+fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit) {
     val currency = state.prefs.currencySymbol
     val prefs = state.prefs
     val exps = state.calcExpenses()
@@ -408,6 +408,7 @@ fun TransactionsScreen(state: AppState, onEdit: (String) -> Unit) {
                     }
                     items(dayItems.size, key = { dayItems[it].id }) { i ->
                         val e = dayItems[i]
+                        var rowBounds by remember(e.id) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (bulkMode) {
                                 Checkbox(
@@ -419,10 +420,11 @@ fun TransactionsScreen(state: AppState, onEdit: (String) -> Unit) {
                             }
                             TransactionRow(
                                 e, currency,
+                                onBoundsChange = { rowBounds = it },
                                 onClick = {
                                     if (bulkMode) { selected = if (e.id in selected) selected - e.id else selected + e.id }
                                     else if (wide) selectedId = e.id
-                                    else onEdit(e.id)
+                                    else onEdit(e.id, rowBounds)
                                 },
                                 onDelete = {
                                     val stash = state.stashExpenseForDelete(e.id)
@@ -484,7 +486,7 @@ fun TransactionsScreen(state: AppState, onEdit: (String) -> Unit) {
                         TxnDetailPane(
                             expense = sel,
                             currency = currency,
-                            onEdit = { onEdit(sel.id) },
+                            onEdit = { onEdit(sel.id, null) },
                             onDelete = {
                                 val stash = state.stashExpenseForDelete(sel.id)
                                 if (stash != null) {

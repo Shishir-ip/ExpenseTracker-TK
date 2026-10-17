@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -137,7 +138,7 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(state: AppState, onAdd: () -> Unit, onEdit: (String) -> Unit, onOpenSettings: () -> Unit = {}) {
+fun HomeScreen(state: AppState, onAdd: () -> Unit, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit, onOpenSettings: () -> Unit = {}) {
     val ui = state.ui.collectAsState().value
     val currency = state.prefs.currencySymbol
     val exps = remember(ui.expenses, ui.includeBills) { state.calcExpenses() }
@@ -274,6 +275,7 @@ fun HomeScreen(state: AppState, onAdd: () -> Unit, onEdit: (String) -> Unit, onO
                         "quick" -> QuickAddCard(state, currency, underLimit = { it <= todaySafe })
                         "chart" -> ChartCard(state, exps, currency)
                         "transactions" -> RecentTxnsCard(state, exps, currency, onEdit, onAdd)
+                        "streak" -> StreakCard(state, exps)
                         "budgets" -> BudgetsCard(state, exps, currency, onOpen = { showBudgetsSheet = true })
                         "summary" -> SummaryCard(state, exps, currency)
                         "insights" -> AiInsightsCard(state, exps, currency)
@@ -860,7 +862,7 @@ private fun periodLabel(p: Int) = when (p) { 0 -> "THIS MONTH"; 1 -> "30 DAYS"; 
 // RECENT TRANSACTIONS
 // ============================================================
 @Composable
-fun RecentTxnsCard(state: AppState, exps: List<Expense>, currency: String, onEdit: (String) -> Unit, onAdd: () -> Unit) {
+fun RecentTxnsCard(state: AppState, exps: List<Expense>, currency: String, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit, onAdd: () -> Unit) {
     SectionCard {
         CardHeader("Recent Transactions", Icons.Default.ReceiptLong, MaterialTheme.colorScheme.primary,
             trailing = { Text("swipe to delete", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) })
@@ -869,14 +871,18 @@ fun RecentTxnsCard(state: AppState, exps: List<Expense>, currency: String, onEdi
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 exps.take(5).forEach { e ->
-                    TransactionRow(e, currency, onClick = { onEdit(e.id) }, onDelete = {
-                        val stash = state.stashExpenseForDelete(e.id)
-                        if (stash != null) {
-                            UndoHost.post("Deleted " + stash.title.take(24),
-                                undo = { state.undoDeleteExpense(stash) },
-                                onDismissed = { state.finalizeExpenseDelete(stash) })
-                        }
-                    })
+                    var rowBounds by remember(e.id) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+                    TransactionRow(e, currency,
+                        onBoundsChange = { rowBounds = it },
+                        onClick = { onEdit(e.id, rowBounds) },
+                        onDelete = {
+                            val stash = state.stashExpenseForDelete(e.id)
+                            if (stash != null) {
+                                UndoHost.post("Deleted " + stash.title.take(24),
+                                    undo = { state.undoDeleteExpense(stash) },
+                                    onDismissed = { state.finalizeExpenseDelete(stash) })
+                            }
+                        })
                 }
             }
         }
@@ -1162,7 +1168,7 @@ fun MonthSheetContent(state: AppState, exps: List<Expense>, currency: String) {
 }
 
 @Composable
-fun TodaySheetContent(state: AppState, exps: List<Expense>, currency: String, onEdit: (String) -> Unit) {
+fun TodaySheetContent(state: AppState, exps: List<Expense>, currency: String, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit) {
     val today = AppState.todayStr()
     val list = exps.filter { it.date == today }.sortedByDescending { it.amount }
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -1174,14 +1180,17 @@ fun TodaySheetContent(state: AppState, exps: List<Expense>, currency: String, on
             EmptyState(Icons.Default.Today, "No transactions today", "Add an expense to get started", illustration = R.drawable.ill_wallet)
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                list.forEach { e -> TransactionRow(e, currency, onClick = { onEdit(e.id) }, onDelete = {
-                    val stash = state.stashExpenseForDelete(e.id)
-                    if (stash != null) {
-                        UndoHost.post("Deleted " + stash.title.take(24),
-                            undo = { state.undoDeleteExpense(stash) },
-                            onDismissed = { state.finalizeExpenseDelete(stash) })
-                    }
-                }) }
+                list.forEach { e ->
+                    var rowBounds by remember(e.id) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+                    TransactionRow(e, currency, onBoundsChange = { rowBounds = it }, onClick = { onEdit(e.id, rowBounds) }, onDelete = {
+                        val stash = state.stashExpenseForDelete(e.id)
+                        if (stash != null) {
+                            UndoHost.post("Deleted " + stash.title.take(24),
+                                undo = { state.undoDeleteExpense(stash) },
+                                onDismissed = { state.finalizeExpenseDelete(stash) })
+                        }
+                    })
+                }
             }
         }
     }
@@ -1364,6 +1373,54 @@ fun ReorderGrid(state: AppState, initialOrder: List<String>, onDone: () -> Unit)
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/** Consecutive days within the daily target (or zero-spend days when no target is set). */
+@Composable
+fun StreakCard(state: AppState, exps: List<Expense>) {
+    val target = state.ui.collectAsState().value.monthlyTarget
+    val streak = remember(exps, target) {
+        var count = 0
+        var d = java.time.LocalDate.now()
+        val todaySpend = exps.filter { it.date == d.toString() }.sumOf { it.amount }
+        if (todaySpend > 0) d = d.minusDays(1)
+        while (count < 365) {
+            val spend = exps.filter { it.date == d.toString() }.sumOf { it.amount }
+            val ok = if (target > 0) spend <= target else spend == 0.0
+            if (ok) { count++; d = d.minusDays(1) } else break
+        }
+        count
+    }
+    if (streak >= 2) {
+        SectionCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(42.dp).clip(CircleShape).background(Color(0x1AF59E0B)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.LocalFireDepartment, null,
+                        tint = Color(0xFFF59E0B), modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "$streak-day ${if (target > 0) "under-target" else "no-spend"} streak",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        if (target > 0) "You stayed within your daily target. Keep the flame alive!"
+                        else "Consecutive days with zero spending. Keep it going!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

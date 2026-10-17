@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
@@ -109,7 +110,103 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
             .padding(top = 12.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // ---------- profile header ----------
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(Color(0xFF4338CA), Color(0xFF8B5CF6), Color(0xFF06B6D4))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.expensetracker.tk.R.drawable.ic_splash),
+                    contentDescription = null,
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Expense Tracker TK", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "v1.7.0 · local-first",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                com.expensetracker.tk.ui.components.SyncBadge(ui.sync, ui.pending)
+                Spacer(Modifier.height(4.dp))
+                val dbSizeKb = remember {
+                    try { context.getDatabasePath("tracker.db").length() / 1024 } catch (e: Exception) { 0 }
+                }
+                Text(
+                    "Local data: ${if (dbSizeKb > 1024) "%.1f MB".format(dbSizeKb / 1024f) else "$dbSizeKb KB"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+
+        // ---------- recurring templates manager ----------
+        SectionCard2("Recurring templates", Icons.Default.Autorenew, MaterialTheme.colorScheme.primary) {
+            val templates = ui.expenses.filter { it.isRecurring && it.recurDays != 0 && it.recurParent == null }
+            if (templates.isEmpty()) {
+                Text(
+                    "No recurring templates yet. Mark an expense as recurring (Daily / Weekly / 30 days) when adding it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    templates.forEach { t ->
+                        val step = kotlin.math.abs(t.recurDays)
+                        val paused = t.recurDays < 0
+                        val start = AppState.parseDate(t.date)
+                        var next = start
+                        if (!paused) {
+                            while (!next.isAfter(java.time.LocalDate.now())) next = next.plusDays(step.toLong())
+                        }
+                        val intervalLabel = when (step) {
+                            1 -> "Daily"
+                            7 -> "Weekly"
+                            else -> "Every 30 days"
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(t.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (paused) "$intervalLabel · paused"
+                                    else "$intervalLabel · next: ${next.dayOfMonth} ${AppState.MONTHS[next.monthValue - 1].take(3)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (paused) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Text(
+                                state.prefs.currencySymbol + AppState.fmtInt(t.amount),
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold
+                            )
+                            TextButton(onClick = {
+                                state.updateExpense(t.copy(recurDays = if (paused) step else -step))
+                            }) { Text(if (paused) "Resume" else "Pause") }
+                        }
+                    }
+                }
+            }
+        }
 
         // ================= CLOUD (SUPABASE) =================
         CloudSection(state)

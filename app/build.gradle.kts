@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,8 +14,8 @@ android {
         applicationId = "com.expensetracker.tk"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6.0"
+        versionCode = 9
+        versionName = "1.7.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -22,7 +24,8 @@ android {
             // Signing secrets live in keystore.properties (gitignored) - see README.
             val ksProps = rootProject.file("keystore.properties")
             if (ksProps.exists()) {
-                val props = java.util.Properties().apply { ksProps.inputStream().use { load(it) } }
+                val props = Properties()
+            ksProps.inputStream().use { props.load(it) }
                 storeFile = rootProject.file(props.getProperty("storeFile"))
                 storePassword = props.getProperty("storePassword")
                 keyAlias = props.getProperty("keyAlias")

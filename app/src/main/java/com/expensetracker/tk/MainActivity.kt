@@ -5,6 +5,21 @@ import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -14,6 +29,12 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,6 +107,7 @@ class MainActivity : FragmentActivity() {
             "com.expensetracker.tk.ADD" -> state.pendingUiAction.value = "add"
             "com.expensetracker.tk.INSIGHTS" -> state.pendingUiAction.value = "insights"
             "com.expensetracker.tk.VOICE" -> state.pendingUiAction.value = "voice"
+            "com.expensetracker.tk.HISTORY" -> state.pendingUiAction.value = "history"
         }
         setContent {
             // observe theme so Settings changes apply instantly (was: read once at startup)
@@ -128,6 +150,8 @@ fun Root() {
     var lockArmed by remember { mutableStateOf(state.prefs.lockEnabled && state.prefs.lockPinHash.isNotBlank()) }
     var showAdd by remember { mutableStateOf(false) }
     var editExpenseId by remember { mutableStateOf<String?>(null) }
+    var editOrigin by remember { mutableStateOf<Rect?>(null) }
+    var fabBounds by remember { mutableStateOf<Rect?>(null) }
 
     val tabs = listOf(
         Tab("home", "Home", Icons.Default.Home),
@@ -154,37 +178,14 @@ fun Root() {
                     exit = slideOutVertically(tween(200)) { it } + fadeOut()
                 ) {
                     Box(Modifier.fillMaxWidth()) {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp
-                        ) {
-                            tabs.forEachIndexed { index, t ->
-                                if (index == 2) {
-                                    // reserved centre slot for the docked FAB
-                                    Box(Modifier.weight(1f))
+                        BottomNavBar(tabs = tabs, currentRoute = currentRoute,
+                            onSelect = { route ->
+                                nav.navigate(route) {
+                                    popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                val selected = currentRoute == t.route
-                                NavigationBarItem(
-                                    selected = selected,
-                                    onClick = {
-                                        if (!selected) {
-                                            nav.navigate(t.route) {
-                                                popUpTo(nav.graph.startDestinationId) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
-                                        }
-                                    },
-                                    icon = { Icon(t.icon, t.label) },
-                                    label = { Text(t.label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                )
-                            }
-                        }
+                            })
                         // centre-docked quick-add FAB, floating over the bar
                         AnimatedVisibility(
                             visible = !showAdd && editExpenseId == null,
@@ -195,13 +196,14 @@ fun Root() {
                             modifier = Modifier.align(Alignment.Center)
                         ) {
                             FloatingActionButton(
-                                onClick = { editExpenseId = null; showAdd = true },
+                                onClick = { editExpenseId = null; editOrigin = fabBounds; showAdd = true },
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary,
                                 shape = CircleShape,
                                 modifier = Modifier
                                     .size(54.dp)
                                     .offset(y = (-24).dp)
+                                    .onGloballyPositioned { fabBounds = it.boundsInRoot() }
                             ) {
                                 Icon(Icons.Default.Add, "Add expense")
                             }
@@ -232,26 +234,41 @@ fun Root() {
                         }
                         state.pendingUiAction.value = null
                     }
+                    "history" -> {
+                        nav.navigate("txns") {
+                            popUpTo(nav.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                        }
+                        state.pendingUiAction.value = null
+                    }
                 }
             }
             NavHost(
                 navController = nav,
                 startDestination = "home",
                 modifier = Modifier.padding(padding),
-                enterTransition = { fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 12 } },
-                exitTransition = { fadeOut(tween(180)) },
-                popEnterTransition = { fadeIn(tween(220)) },
-                popExitTransition = { fadeOut(tween(180)) + slideOutVertically(tween(240)) { it / 12 } }
+                enterTransition = {
+                    slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(240))
+                },
+                exitTransition = {
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 5 } + fadeOut(tween(180))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { -it / 3 } + fadeIn(tween(240))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 5 } + fadeOut(tween(180))
+                }
             ) {
                 composable("home") {
                     HomeScreen(
                         state,
-                        onAdd = { editExpenseId = null; showAdd = true },
-                        onEdit = { id -> editExpenseId = id; showAdd = true },
+                        onAdd = { editExpenseId = null; editOrigin = fabBounds; showAdd = true },
+                        onEdit = { id, origin -> editExpenseId = id; editOrigin = origin; showAdd = true },
                         onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } }
                     )
                 }
-                composable("txns") { TransactionsScreen(state, onEdit = { id -> editExpenseId = id; showAdd = true }) }
+                composable("txns") { TransactionsScreen(state, onEdit = { id, origin -> editExpenseId = id; editOrigin = origin; showAdd = true }) }
                 composable("insights") { InsightsScreen(state) }
                 composable("borrow") { BorrowScreen(state) }
                 composable("settings") {
@@ -260,15 +277,16 @@ fun Root() {
             }
         }
 
-        // add / edit sheet
+        // add / edit — morphs from the tapped row (container transform)
         AnimatedVisibility(
             visible = showAdd,
-            enter = slideInVertically(tween(320)) { it } + fadeIn(),
-            exit = slideOutVertically(tween(260)) { it } + fadeOut()
+            enter = fadeIn(tween(30)),
+            exit = fadeOut(tween(30))
         ) {
             AddEditExpenseScreen(
                 state = state,
                 editId = editExpenseId,
+                origin = editOrigin,
                 onDismiss = { showAdd = false; editExpenseId = null }
             )
         }
@@ -298,5 +316,64 @@ object UndoHost {
 
     fun post(message: String, undo: () -> Unit = {}, onDismissed: () -> Unit = {}) {
         show?.invoke(message, undo, onDismissed)
+    }
+}
+
+
+/** Custom bottom bar with a spring-animated selection pill sliding between tabs. */
+@Composable
+private fun BottomNavBar(tabs: List<Tab>, currentRoute: String?, onSelect: (String) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
+        Column {
+            BoxWithConstraints(Modifier.fillMaxWidth().height(66.dp)) {
+                val slotW = maxWidth / 5
+                val slot = when (currentRoute) {
+                    "home" -> 0; "txns" -> 1; "insights" -> 3; "borrow" -> 4; else -> -1
+                }
+                val pillX by animateDpAsState(
+                    targetValue = slotW * slot,
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f),
+                    label = "pill"
+                )
+                if (slot >= 0) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(15.dp),
+                        modifier = Modifier
+                            .offset(x = pillX + (slotW - 52.dp) / 2, y = 7.dp)
+                            .size(52.dp, 30.dp)
+                    ) {}
+                }
+                Row(Modifier.fillMaxSize()) {
+                    tabs.forEachIndexed { index, t ->
+                        val selected = currentRoute == t.route
+                        val interaction = remember { MutableInteractionSource() }
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxSize()
+                                .clickable(interactionSource = interaction, indication = null) { onSelect(t.route) },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                t.icon, t.label,
+                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                t.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    // centre gap for the docked FAB
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
     }
 }

@@ -1,6 +1,15 @@
 package com.expensetracker.tk.ui.screens
 
 import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +32,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,7 +69,7 @@ import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddEditExpenseScreen(state: AppState, editId: String?, onDismiss: () -> Unit) {
+fun AddEditExpenseScreen(state: AppState, editId: String?, origin: androidx.compose.ui.geometry.Rect? = null, onDismiss: () -> Unit) {
     val existing = editId?.let { state.ui.value.expenses.firstOrNull { e -> e.id == it } }
     val currency = state.prefs.currencySymbol
 
@@ -71,8 +83,38 @@ fun AddEditExpenseScreen(state: AppState, editId: String?, onDismiss: () -> Unit
     var showDate by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // container transform: morph from the tapped row into the full screen
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, androidx.compose.animation.core.tween(340, easing = FastOutSlowInEasing)) }
+    fun dismissAnimated() {
+        scope.launch {
+            progress.animateTo(0f, androidx.compose.animation.core.tween(210, easing = FastOutSlowInEasing))
+            onDismiss()
+        }
+    }
+    val metrics = LocalContext.current.resources.displayMetrics
+    val p = progress.value
+    val o = origin
+
     Surface(
-        Modifier.fillMaxSize(),
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                if (o != null) {
+                    val sw = metrics.widthPixels.toFloat().coerceAtLeast(1f)
+                    val sh = metrics.heightPixels.toFloat().coerceAtLeast(1f)
+                    transformOrigin = TransformOrigin(
+                        ((o.left + o.right) / 2f / sw).coerceIn(0f, 1f),
+                        ((o.top + o.bottom) / 2f / sh).coerceIn(0f, 1f)
+                    )
+                    scaleX = lerp(o.width / sw, 1f, p)
+                    scaleY = lerp(o.height / sh, 1f, p)
+                    alpha = 0.35f + 0.65f * p
+                    shape = RoundedCornerShape(lerp(18f, 0f, p))
+                    clip = true
+                }
+            },
         color = MaterialTheme.colorScheme.background
     ) {
         Column(
@@ -88,23 +130,68 @@ fun AddEditExpenseScreen(state: AppState, editId: String?, onDismiss: () -> Unit
                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
+                IconButton(onClick = { dismissAnimated() }) { Icon(Icons.Default.Close, "Close") }
             }
 
             Spacer(Modifier.height(14.dp))
 
-            // amount — big and central
-            OutlinedTextField(
-                value = amount,
-                onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
-                label = { Text("Amount ($currency)") },
-                placeholder = { Text("0.00", style = MaterialTheme.typography.headlineMedium) },
-                textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+            // amount — big display + custom keypad
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                    .padding(vertical = 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    currency + if (amount.isEmpty()) "0" else amount,
+                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL")
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                keys.chunked(3).forEach { rowKeys ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        rowKeys.forEach { k ->
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                    .clickable {
+                                        amount = when (k) {
+                                            "DEL" -> amount.dropLast(1)
+                                            "." -> if (amount.contains('.')) amount else if (amount.isEmpty()) "0." else amount + "."
+                                            else -> if (amount.replace(".", "").length >= 9) amount
+                                                    else if (amount == "0") k else amount + k
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (k == "DEL") {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Backspace, "Delete digit",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        k,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -204,7 +291,7 @@ fun AddEditExpenseScreen(state: AppState, editId: String?, onDismiss: () -> Unit
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 existing?.let { e ->
                     Button(
-                        onClick = { state.deleteExpense(e.id); onDismiss() },
+                        onClick = { state.deleteExpense(e.id); dismissAnimated() },
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Danger),
                         modifier = Modifier.weight(1f).height(52.dp)
                     ) {
@@ -226,7 +313,7 @@ fun AddEditExpenseScreen(state: AppState, editId: String?, onDismiss: () -> Unit
                                 } else {
                                     state.updateExpense(existing.copy(title = t, amount = amt, category = category, date = date.toString(), notes = notes.trim(), isRecurring = recurring, recurDays = if (recurring) recurDays else 0))
                                 }
-                                onDismiss()
+                                dismissAnimated()
                             }
                         }
                     },

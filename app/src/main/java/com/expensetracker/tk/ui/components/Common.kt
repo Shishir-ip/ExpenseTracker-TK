@@ -15,6 +15,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.Image
+import kotlinx.coroutines.delay
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloat
@@ -67,6 +75,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -74,6 +83,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.expensetracker.tk.data.Categories
@@ -138,9 +149,15 @@ fun SectionCard(
     content: @Composable () -> Unit
 ) {
     val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.98f else 1f,
+        animationSpec = spring(stiffness = 1000f), label = "pressScale"
+    )
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
             .then(if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = null) { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -172,11 +189,17 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String, illustration:
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (illustration != null) {
+            val floatT = rememberInfiniteTransition(label = "float")
+            val floatY by floatT.animateFloat(
+                initialValue = -5f, targetValue = 5f,
+                animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                label = "floatY"
+            )
             Image(
                 painter = painterResource(illustration),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.size(120.dp)
+                modifier = Modifier.size(120.dp).graphicsLayer { translationY = floatY }
             )
         } else {
             Box(
@@ -229,15 +252,34 @@ fun CategoryIcon(categoryId: String, size: Dp, tint: Color) {
     Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size))
 }
 
-/** Animated number that counts up when it appears — like the web app count-up. */
+/** Animated amount: slides the old value up and the new one in when the total changes. */
 @Composable
 fun AnimatedAmount(target: Double, prefix: String, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.headlineSmall, color: Color = MaterialTheme.colorScheme.onSurface) {
-    val current by animateFloatAsState(
-        targetValue = target.toFloat(),
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 60f),
-        label = "count"
-    )
-    Text("$prefix${AppState.fmtAmount(current.toDouble())}", style = style, color = color, fontWeight = FontWeight.ExtraBold)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val lineH = with(density) { (style.fontSize * 1.35f).toDp() }
+    val shown = remember { mutableStateOf(target) }
+    val anim = remember { Animatable(1f) }
+    LaunchedEffect(target) {
+        if (target != shown.value) {
+            anim.snapTo(0f)
+            anim.animateTo(1f, tween(480, easing = FastOutSlowInEasing))
+            shown.value = target
+        }
+    }
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .clipToBounds()
+            .height(lineH)
+    ) {
+        Text(
+            "$prefix${AppState.fmtAmount(shown.value)}", style = style, color = color, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.graphicsLayer { translationY = -anim.value * lineH.toPx(); alpha = 1f - anim.value }
+        )
+        Text(
+            "$prefix${AppState.fmtAmount(target)}", style = style, color = color, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.graphicsLayer { translationY = (1f - anim.value) * lineH.toPx(); alpha = anim.value }
+        )
+    }
 }
 
 @Composable
@@ -270,9 +312,16 @@ fun TransactionRow(
     currency: String,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBoundsChange: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null
 ) {
     val view = LocalView.current
+    val rowInteraction = remember { MutableInteractionSource() }
+    val rowPressed by rowInteraction.collectIsPressedAsState()
+    val rowScale by animateFloatAsState(
+        targetValue = if (rowPressed) 0.98f else 1f,
+        animationSpec = spring(stiffness = 1000f), label = "rowScale"
+    )
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { v ->
             if (v == SwipeToDismissBoxValue.EndToStart) {
@@ -285,7 +334,7 @@ fun TransactionRow(
 
     SwipeToDismissBox(
         state = dismissState,
-        modifier = modifier,
+        modifier = modifier.onGloballyPositioned { onBoundsChange?.invoke(it.boundsInRoot()) },
         enableDismissFromStartToEnd = false,
         backgroundContent = {
             val target = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) Danger else Color.Transparent
@@ -304,9 +353,10 @@ fun TransactionRow(
         Row(
             Modifier
                 .fillMaxWidth()
+                .graphicsLayer { scaleX = rowScale; scaleY = rowScale }
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                .clickable { onClick() }
+                .clickable(interactionSource = rowInteraction, indication = null) { onClick() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

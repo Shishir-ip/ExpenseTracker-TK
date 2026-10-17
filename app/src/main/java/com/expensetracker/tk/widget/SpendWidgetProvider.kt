@@ -91,6 +91,23 @@ class SpendWidgetProvider : AppWidgetProvider() {
                 context, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            // tap zones: Today → History, Month → Insights (root stays Home)
+            val piHistory = PendingIntent.getActivity(
+                context, 44,
+                Intent(context, MainActivity::class.java).apply {
+                    action = "com.expensetracker.tk.HISTORY"
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val piInsights = PendingIntent.getActivity(
+                context, 45,
+                Intent(context, MainActivity::class.java).apply {
+                    action = "com.expensetracker.tk.INSIGHTS"
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
             val progressPct = if (targetTotal > 0) ((month / targetTotal) * 100).toInt().coerceIn(0, 100) else 0
             val progressText = when {
@@ -118,6 +135,10 @@ class SpendWidgetProvider : AppWidgetProvider() {
                 setProgressBar(R.id.wl_progress, 100, progressPct, false)
                 setTextViewText(R.id.wl_progress_text, progressText)
                 setOnClickPendingIntent(R.id.wl_root, pi)
+                setOnClickPendingIntent(R.id.wl_today_value, piHistory)
+                setOnClickPendingIntent(R.id.wl_today_label, piHistory)
+                setOnClickPendingIntent(R.id.wl_month_value, piInsights)
+                setOnClickPendingIntent(R.id.wl_month_title, piInsights)
             }
         }
 

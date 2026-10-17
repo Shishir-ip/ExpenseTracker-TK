@@ -20,6 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +45,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.expensetracker.tk.data.Categories
 import com.expensetracker.tk.state.AppState
 import com.expensetracker.tk.ui.theme.HeatHigh
@@ -47,6 +53,7 @@ import com.expensetracker.tk.ui.theme.HeatLow
 import com.expensetracker.tk.ui.theme.HeatMid
 import com.expensetracker.tk.ui.theme.HeatMin
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
 data class DonutSlice(val label: String, val value: Double, val color: Color)
 
@@ -196,15 +203,35 @@ fun LineChart(
     values: List<Double>,
     labels: List<String>,
     modifier: Modifier = Modifier,
-    color: Color = Color(0xFF6366F1)
+    color: Color = Color(0xFF6366F1),
+    currency: String = ""
 ) {
     var played by remember { mutableStateOf(false) }
     LaunchedEffect(values) { played = true }
     val grow by animateFloatAsState(if (played) 1f else 0f, tween(900, easing = FastOutSlowInEasing), label = "line")
 
     val outlineColor = MaterialTheme.colorScheme.outline
+    val textMeasurer = rememberTextMeasurer()
+    var touchIdx by remember { mutableStateOf<Int?>(null) }
     Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(160.dp)) {
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .pointerInput(values.size) {
+                    detectDragGestures(
+                        onDragStart = { off ->
+                            touchIdx = (off.x / size.width * (values.size - 1)).roundToInt().coerceIn(0, values.size - 1)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            touchIdx = (change.position.x / size.width * (values.size - 1)).roundToInt().coerceIn(0, values.size - 1)
+                        },
+                        onDragEnd = { touchIdx = null },
+                        onDragCancel = { touchIdx = null }
+                    )
+                }
+        ) {
             if (values.size < 2) return@Canvas
             val maxV = (values.maxOrNull() ?: 1.0).coerceAtLeast(1.0).toFloat()
             val stepX = size.width / (values.size - 1)
@@ -245,6 +272,29 @@ fun LineChart(
                 end = Offset(size.width, size.height - 1.dp.toPx()),
                 strokeWidth = 1.dp.toPx()
             )
+            // touch tooltip
+            touchIdx?.let { idx ->
+                val pt = pts[idx]
+                drawLine(color.copy(alpha = 0.5f), Offset(pt.x, 0f), Offset(pt.x, size.height), 1.5.dp.toPx())
+                drawCircle(color.copy(alpha = 0.25f), radius = 11.dp.toPx(), center = pt)
+                drawCircle(color, radius = 5.dp.toPx(), center = pt)
+                val text = "${labels.getOrNull(idx) ?: ""}  ${currency}${AppState.fmtInt(values[idx])}"
+                val measured = textMeasurer.measure(
+                    text,
+                    TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                )
+                val bw = measured.size.width + 26f
+                val bh = measured.size.height + 16f
+                val bx = (pt.x - bw / 2f).coerceIn(4f, size.width - bw - 4f)
+                val by = (pt.y - bh - 26f).coerceIn(4f, size.height - bh - 4f)
+                drawRoundRect(
+                    Color(0xEE111827),
+                    topLeft = Offset(bx, by),
+                    size = Size(bw, bh),
+                    cornerRadius = CornerRadius(10.dp.toPx())
+                )
+                drawText(measured, topLeft = Offset(bx + 13f, by + 8f))
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             labels.forEach { l ->
@@ -418,12 +468,32 @@ fun BurnDownChart(
     daysInMonth: Int,
     targetTotal: Double,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currency: String = ""
 ) {
     val outlineColor = MaterialTheme.colorScheme.outline
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val textMeasurer = rememberTextMeasurer()
+    var touchDay by remember { mutableStateOf<Int?>(null) }
     Column(modifier) {
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(110.dp)) {
+        androidx.compose.foundation.Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .pointerInput(daysInMonth) {
+                    detectDragGestures(
+                        onDragStart = { off ->
+                            touchDay = (off.x / size.width * (daysInMonth - 1)).roundToInt().coerceIn(0, daysInMonth - 1)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            touchDay = (change.position.x / size.width * (daysInMonth - 1)).roundToInt().coerceIn(0, daysInMonth - 1)
+                        },
+                        onDragEnd = { touchDay = null },
+                        onDragCancel = { touchDay = null }
+                    )
+                }
+        ) {
             if (daysInMonth < 2 || targetTotal <= 0.0) return@Canvas
             val scaleMax = (targetTotal.coerceAtLeast(cumulative.maxOrNull() ?: 0.0)).toFloat().coerceAtLeast(1f)
             fun x(day: Int) = (day.toFloat() / (daysInMonth - 1).toFloat()) * size.width
@@ -457,6 +527,34 @@ fun BurnDownChart(
                 // today marker
                 drawCircle(color, radius = 5.dp.toPx(), center = Offset(x(cumulative.size - 1), y(cumulative.last())))
                 drawCircle(Color.White, radius = 2.dp.toPx(), center = Offset(x(cumulative.size - 1), y(cumulative.last())))
+
+                // touch tooltip
+                touchDay?.let { day ->
+                    val dayIdx = (day - 1).coerceIn(0, cumulative.size - 1)
+                    val px = x(day)
+                    val py = y(cumulative[dayIdx])
+                    drawLine(outlineColor.copy(alpha = 0.6f), Offset(px, 0f), Offset(px, size.height), 1.5.dp.toPx())
+                    drawCircle(color, radius = 5.dp.toPx(), center = Offset(px, py))
+                    val spent = cumulative[dayIdx]
+                    val ideal = targetTotal / daysInMonth * day
+                    val verdict = if (spent <= ideal) "on pace" else "over pace"
+                    val text = "Day $day  ${currency}${AppState.fmtInt(spent)} · $verdict"
+                    val measured = textMeasurer.measure(
+                        text,
+                        TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    )
+                    val bw = measured.size.width + 24f
+                    val bh = measured.size.height + 14f
+                    val bx = (px - bw / 2f).coerceIn(4f, size.width - bw - 4f)
+                    val by = (py - bh - 20f).coerceIn(4f, size.height - bh - 4f)
+                    drawRoundRect(
+                        Color(0xEE111827),
+                        topLeft = Offset(bx, by),
+                        size = Size(bw, bh),
+                        cornerRadius = CornerRadius(9.dp.toPx())
+                    )
+                    drawText(measured, topLeft = Offset(bx + 12f, by + 7f))
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

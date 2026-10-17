@@ -222,7 +222,8 @@ fun InsightsScreen(state: AppState) {
                     LineChart(
                         values = trend.map { it.second },
                         labels = trend.map { it.first.take(3) },
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        currency = currency
                     )
                 }
             }
