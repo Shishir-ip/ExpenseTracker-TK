@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_add"
+        android:shortcutLongLabel="@string/shortcut_add_long">
+        <intent
+            android:action="com.expensetracker.tk.ADD"
+            android:targetPackage="com.expensetracker.tk"
+            android:targetClass="com.expensetracker.tk.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="insights"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_insights"
+        android:shortcutShortLabel="@string/shortcut_insights"
+        android:shortcutLongLabel="@string/shortcut_insights_long">
+        <intent
+            android:action="com.expensetracker.tk.INSIGHTS"
+            android:targetPackage="com.expensetracker.tk"
+            android:targetClass="com.expensetracker.tk.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="voice_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_voice"
+        android:shortcutShortLabel="@string/shortcut_voice"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="com.expensetracker.tk.VOICE"
+            android:targetPackage="com.expensetracker.tk"
+            android:targetClass="com.expensetracker.tk.MainActivity" />
+    </shortcut>
+</shortcuts>

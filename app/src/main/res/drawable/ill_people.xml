@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <path
+        android:fillColor="#6366F1"
+        android:fillAlpha="0.12"
+        android:pathData="M60,10 a50,50 0 1,0 0.01,0 Z" />
+    <!-- person 1 -->
+    <path
+        android:fillColor="#818CF8"
+        android:fillAlpha="0.85"
+        android:pathData="M45,26 a12,12 0 1,0 0.01,0 Z" />
+    <path
+        android:fillColor="#818CF8"
+        android:fillAlpha="0.85"
+        android:pathData="M25,86 C25,72 34,64 45,64 C56,64 65,72 65,86 L65,90 L25,90 Z" />
+    <!-- person 2 (front) -->
+    <path
+        android:fillColor="#4338CA"
+        android:fillAlpha="0.9"
+        android:pathData="M75,36 a10,10 0 1,0 0.01,0 Z" />
+    <path
+        android:fillColor="#4338CA"
+        android:fillAlpha="0.9"
+        android:pathData="M58,90 C58,79 66,72 75,72 C84,72 92,79 92,90 L92,92 L58,92 Z" />
+    <!-- handshake spark -->
+    <path
+        android:fillColor="#F59E0B"
+        android:fillAlpha="0.9"
+        android:pathData="M60,10 L62.5,15.5 L68,18 L62.5,20.5 L60,26 L57.5,20.5 L52,18 L57.5,15.5 Z" />
+</vector>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- monochrome (themed icon) layer: the glyph alone, tinted by the system -->
+    <group
+        android:scaleX="1.6"
+        android:scaleY="1.6"
+        android:pivotX="55.5"
+        android:pivotY="57">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M40,40 L48,40 C52,40 54,42 54,46 L54,50 L62,50 L62,56 L54,56 L54,76 L48,76 L48,56 L42,56 L42,50 L48,50 L48,44 C48,43 47.5,42.5 46.5,42.5 L40,42.5 Z M66,50 C68.8,50 71,52.2 71,55 C71,57.8 68.8,60 66,60 C63.2,60 61,57.8 61,55 C61,52.2 63.2,50 66,50 Z" />
+    </group>
+</vector>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- soft blob -->
+    <path
+        android:fillColor="#6366F1"
+        android:fillAlpha="0.12"
+        android:pathData="M60,10 a50,50 0 1,0 0.01,0 Z" />
+    <!-- floating coin -->
+    <path
+        android:fillColor="#F59E0B"
+        android:fillAlpha="0.85"
+        android:pathData="M88,22 a11,11 0 1,0 0.01,0 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:pathData="M87.5,17.5 L89.5,17.5 L89.5,20.5 L92.5,20.5 L92.5,22.5 L89.5,22.5 L89.5,27.5 L87.5,27.5 L87.5,22.5 L84.5,22.5 L84.5,20.5 L87.5,20.5 Z" />
+    <!-- wallet body -->
+    <path
+        android:fillColor="#64748B"
+        android:fillAlpha="0.38"
+        android:pathData="M34,44 L76,44 A9,9 0 0 1 85,53 L85,78 A9,9 0 0 1 76,87 L34,87 A9,9 0 0 1 25,78 L25,53 A9,9 0 0 1 34,44 Z" />
+    <!-- flap -->
+    <path
+        android:fillColor="#818CF8"
+        android:fillAlpha="0.75"
+        android:pathData="M38,35 L72,35 A6,6 0 0 1 78,41 L78,44 L32,44 L32,41 A6,6 0 0 1 38,35 Z" />
+    <!-- clasp -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:fillAlpha="0.9"
+        android:pathData="M70,60 a6,6 0 1,0 0.01,0 Z" />
+    <path
+        android:fillColor="#64748B"
+        android:fillAlpha="0.5"
+        android:pathData="M70,63.5 a3.5,3.5 0 1,0 0.01,0 Z" />
+</vector>

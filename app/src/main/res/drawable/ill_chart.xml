@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <path
+        android:fillColor="#6366F1"
+        android:fillAlpha="0.12"
+        android:pathData="M60,10 a50,50 0 1,0 0.01,0 Z" />
+    <!-- baseline + axis -->
+    <path
+        android:fillColor="#94A3B8"
+        android:fillAlpha="0.55"
+        android:pathData="M25,88 L95,88 A3,3 0 0 1 95,94 L25,94 A3,3 0 0 1 25,88 Z" />
+    <!-- bars -->
+    <path
+        android:fillColor="#A5B4FC"
+        android:fillAlpha="0.8"
+        android:pathData="M33,58 L43,58 A3,3 0 0 1 46,61 L46,84 A3,3 0 0 1 43,87 L33,87 A3,3 0 0 1 30,84 L30,61 A3,3 0 0 1 33,58 Z" />
+    <path
+        android:fillColor="#6366F1"
+        android:fillAlpha="0.8"
+        android:pathData="M55,42 L65,42 A3,3 0 0 1 68,45 L68,84 A3,3 0 0 1 65,87 L55,87 A3,3 0 0 1 52,84 L52,45 A3,3 0 0 1 55,42 Z" />
+    <path
+        android:fillColor="#8B5CF6"
+        android:fillAlpha="0.8"
+        android:pathData="M77,50 L87,50 A3,3 0 0 1 90,53 L90,84 A3,3 0 0 1 87,87 L77,87 A3,3 0 0 1 74,84 L74,53 A3,3 0 0 1 77,50 Z" />
+    <!-- sleeping z z -->
+    <path
+        android:fillColor="#818CF8"
+        android:fillAlpha="0.9"
+        android:pathData="M88,22 L98,22 L98,26 L93,26 L98,32 L98,35 L87,35 L87,31 L92,31 L88,25 Z" />
+    <path
+        android:fillColor="#818CF8"
+        android:fillAlpha="0.6"
+        android:pathData="M99,12 L105,12 L105,15 L102,15 L105,19 L105,22 L98,22 L98,19 L101,19 L99,15 Z" />
+</vector>

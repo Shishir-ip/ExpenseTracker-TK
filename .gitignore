@@ -1,0 +1,22 @@
+# Built outputs
+build/
+app/build/
+captures/
+
+# IDE
+.idea/
+*.iml
+local.properties
+
+# Gradle
+.gradle/
+.gradle*/
+
+# Signing secrets — never commit these
+keystore.properties
+release.keystore
+*.jks
+
+# Misc
+.DS_Store
+*.log

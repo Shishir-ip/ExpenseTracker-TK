@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Expense Tracker</string>
+    <string name="widget_desc">Today and this month spending at a glance</string>
+    <string name="shortcut_add">Add expense</string>
+    <string name="shortcut_add_long">Log an expense</string>
+    <string name="shortcut_insights">Insights</string>
+    <string name="shortcut_insights_long">See spending insights</string>
+    <string name="shortcut_voice">Voice expense</string>
+    <string name="shortcut_voice_long">Log an expense by voice</string>
+    <string name="widget_desc_large">Today, month totals and budget progress</string>
+    <string name="widget_desc_quick">One-tap expense logging</string>
+</resources>
