@@ -4,6 +4,12 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Handshake
+import androidx.compose.material.icons.filled.AutoDelete
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -95,6 +101,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.format.DateTimeFormatter
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
     val ui = state.ui.collectAsState().value
@@ -102,6 +109,8 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    var showTrash by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
@@ -298,6 +307,23 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
         // ================= DATA: EXPORT / IMPORT / SYNC =================
         DataSection(state)
 
+        // ---------- trash (deleted items kept 30 days) ----------
+        SectionCard2("Trash", Icons.Default.AutoDelete, Danger) {
+            val trashCount = remember(ui.reloadKey) { state.trashItems().size }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Deleted items", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (trashCount == 0) "Nothing in the trash"
+                        else "$trashCount item(s) · kept 30 days, then removed permanently",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showTrash = true }, enabled = trashCount > 0) { Text("Open") }
+            }
+        }
+
         // ================= ABOUT =================
         SectionCard2("About", Icons.Default.Description, MaterialTheme.colorScheme.primary) {
             Text("Expense Tracker TK — Android", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -332,6 +358,13 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
                     }
             )
         }
+    }
+
+    if (showTrash) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showTrash = false }) {
+            TrashSheet(state, onClose = { showTrash = false })
+        }
+    }
     }
 }
 
@@ -998,5 +1031,99 @@ fun DataSection(state: AppState) {
             }) { Text("Back up now") }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+    }
+}
+
+
+/** 30-day trash: restore accidentally deleted expenses / borrow entries. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun TrashSheet(state: AppState, onClose: () -> Unit) {
+    val currency = state.prefs.currencySymbol
+    var items by remember { mutableStateOf(state.trashItems()) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Trash", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClose) { Text("Close") }
+        }
+        Text(
+            "Tap Restore to put an item back (it syncs to the cloud again). Items are removed permanently after 30 days.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+
+        if (items.isEmpty()) {
+            Text("Trash is empty", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.heightIn(max = 460.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(items.size, key = { items[it].id + "_" + items[it].deletedAt }) { i ->
+                    val item = items[i]
+                    var title = "?"
+                    var amount = 0.0
+                    var isBorrow = false
+                    try {
+                        val o = org.json.JSONObject(item.payload)
+                        if (item.type == "borrow") {
+                            isBorrow = true
+                            title = o.optString("person_name", "?")
+                            amount = o.optDouble("amount", 0.0)
+                        } else {
+                            title = o.optString("title", "?")
+                            amount = o.optDouble("amount", 0.0)
+                        }
+                    } catch (e: Exception) { /* keep defaults */ }
+                    val daysAgo = ((System.currentTimeMillis() - item.deletedAt) / 86400000L).coerceAtLeast(0)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isBorrow) Icons.Default.Handshake else Icons.Default.ReceiptLong,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(
+                                "$currency${AppState.fmtInt(amount)} · deleted ${if (daysAgo == 0L) "today" else "${daysAgo}d ago"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(onClick = {
+                            if (state.restoreFromTrash(item)) {
+                                items = state.trashItems()
+                            }
+                        }) { Text("Restore") }
+                        IconButton(onClick = {
+                            state.deleteFromTrashForever(item)
+                            items = state.trashItems()
+                        }) {
+                            Icon(
+                                Icons.Default.Delete, "Delete forever",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

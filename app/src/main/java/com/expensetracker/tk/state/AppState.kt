@@ -166,6 +166,15 @@ class AppState(private val app: TrackerApp) {
     }
 
     fun finalizeExpenseDelete(stash: Expense) {
+        // keep a copy in the 30-day trash before the tombstone is pushed and purged
+        val payload = org.json.JSONObject().apply {
+            put("id", stash.id); put("title", stash.title); put("amount", stash.amount)
+            put("category", stash.category); put("date", stash.date); put("notes", stash.notes)
+            put("is_recurring", stash.isRecurring); put("recur_days", stash.recurDays)
+            put("recur_parent", stash.recurParent ?: ""); put("created_at", stash.createdAt)
+            put("updated_at", stash.updatedAt)
+        }
+        db.trashInsert(stash.id, "expense", payload.toString(), System.currentTimeMillis())
         db.upsertExpense(stash.copy(deleted = true, dirty = true, updatedAt = System.currentTimeMillis()))
         reload()
         app.sync.requestSync()
@@ -180,7 +189,17 @@ class AppState(private val app: TrackerApp) {
 
     fun finalizeBulkDelete(stash: List<Expense>) {
         val now = System.currentTimeMillis()
-        stash.forEach { db.upsertExpense(it.copy(deleted = true, dirty = true, updatedAt = now)) }
+        stash.forEach { e ->
+            val payload = org.json.JSONObject().apply {
+                put("id", e.id); put("title", e.title); put("amount", e.amount)
+                put("category", e.category); put("date", e.date); put("notes", e.notes)
+                put("is_recurring", e.isRecurring); put("recur_days", e.recurDays)
+                put("recur_parent", e.recurParent ?: ""); put("created_at", e.createdAt)
+                put("updated_at", e.updatedAt)
+            }
+            db.trashInsert(e.id, "expense", payload.toString(), now)
+            db.upsertExpense(e.copy(deleted = true, dirty = true, updatedAt = now))
+        }
         reload()
         app.sync.requestSync()
     }
@@ -198,9 +217,67 @@ class AppState(private val app: TrackerApp) {
     }
 
     fun finalizeBorrowDelete(stash: BorrowLend) {
+        val payload = org.json.JSONObject().apply {
+            put("id", stash.id); put("type", stash.type); put("person_name", stash.personName)
+            put("amount", stash.amount); put("date", stash.date)
+            put("reminder_date", stash.reminderDate ?: ""); put("status", stash.status)
+            put("notes", stash.notes); put("updated_at", stash.updatedAt)
+        }
+        db.trashInsert(stash.id, "borrow", payload.toString(), System.currentTimeMillis())
         db.upsertBorrow(stash.copy(deleted = true, dirty = true, updatedAt = System.currentTimeMillis()))
         reload()
         app.sync.requestSync()
+    }
+
+    // ---------- trash ----------
+
+    fun trashItems(): List<TrashItem> = db.trashList()
+
+    fun purgeOldTrash() {
+        db.trashPurgeOlderThan(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
+    }
+
+    /** Re-create a deleted item from the trash and sync it back to the cloud. */
+    fun restoreFromTrash(item: TrashItem): Boolean {
+        return try {
+            val o = org.json.JSONObject(item.payload)
+            val now = System.currentTimeMillis()
+            when (item.type) {
+                "expense" -> db.upsertExpense(
+                    Expense(
+                        id = o.getString("id"), title = o.getString("title"),
+                        amount = o.getDouble("amount"), category = o.optString("category", "other"),
+                        date = o.optString("date", AppState.todayStr()), notes = o.optString("notes", ""),
+                        isRecurring = o.optBoolean("is_recurring", false),
+                        createdAt = o.optLong("created_at", now), updatedAt = now,
+                        dirty = true, deleted = false,
+                        recurDays = o.optInt("recur_days", 0),
+                        recurParent = o.optString("recur_parent", "").ifBlank { null }
+                    )
+                )
+                "borrow" -> db.upsertBorrow(
+                    BorrowLend(
+                        id = o.getString("id"), type = o.optString("type", "borrow"),
+                        personName = o.optString("person_name", "?"), amount = o.getDouble("amount"),
+                        date = o.optString("date", AppState.todayStr()),
+                        reminderDate = o.optString("reminder_date", "").ifBlank { null },
+                        status = o.optString("status", "pending"), notes = o.optString("notes", ""),
+                        updatedAt = now, dirty = true, deleted = false
+                    )
+                )
+            }
+            db.trashDelete(item.id)
+            reload()
+            app.sync.requestSync()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun deleteFromTrashForever(item: TrashItem) {
+        db.trashDelete(item.id)
+        reload()
     }
 
     /** Reopen a settled borrow/lend record. */

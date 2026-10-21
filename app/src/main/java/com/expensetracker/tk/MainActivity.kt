@@ -231,7 +231,7 @@ fun Root() {
                 UndoHost.show = { message, undo, dismissed ->
                     snackbarScope.launch {
                         val result = snackbarHostState.showSnackbar(
-                            message, actionLabel = "Undo", duration = SnackbarDuration.Short
+                            message, actionLabel = "Undo", duration = SnackbarDuration.Long
                         )
                         if (result == SnackbarResult.ActionPerformed) undo() else dismissed()
                     }

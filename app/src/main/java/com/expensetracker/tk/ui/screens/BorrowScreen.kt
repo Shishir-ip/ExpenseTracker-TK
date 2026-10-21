@@ -56,7 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -223,17 +225,32 @@ fun BorrowScreen(state: AppState) {
                                 }
                                 true
                             } else false
-                        }
+                        },
+                        positionalThreshold = { total -> total * 0.62f }
                     )
                     SwipeToDismissBox(
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         backgroundContent = {
+                            var bgW by remember { mutableStateOf(1f) }
+                            val off = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+                            val progress = (kotlin.math.abs(off) / (bgW * 0.62f)).coerceIn(0f, 1f)
                             Box(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Danger).padding(horizontal = 20.dp),
+                                Modifier
+                                    .fillMaxWidth()
+                                    .onSizeChanged { bgW = it.width.toFloat().coerceAtLeast(1f) }
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Danger.copy(alpha = progress))
+                                    .padding(horizontal = 24.dp),
                                 contentAlignment = Alignment.CenterEnd
                             ) {
-                                Icon(Icons.Default.Delete, "Delete", tint = Color.White)
+                                Icon(
+                                    Icons.Default.Delete, "Delete",
+                                    tint = Color.White.copy(alpha = progress),
+                                    modifier = Modifier
+                                        .size((18 + 8 * progress).dp)
+                                        .graphicsLayer { scaleX = 0.8f + 0.4f * progress; scaleY = 0.8f + 0.4f * progress }
+                                )
                             }
                         }
                     ) {
@@ -307,7 +324,13 @@ fun BorrowRow(b: BorrowLend, currency: String, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .background(
+                androidx.compose.ui.graphics.lerp(
+                    MaterialTheme.colorScheme.surface,
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    0.55f
+                )
+            )
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically

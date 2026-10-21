@@ -85,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.expensetracker.tk.data.Categories
@@ -328,7 +329,8 @@ fun TransactionRow(
                 view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                 onDelete(); true
             } else false
-        }
+        },
+        positionalThreshold = { total -> total * 0.62f }
     )
     LaunchedEffect(expense.id) { dismissState.reset() }
 
@@ -337,15 +339,25 @@ fun TransactionRow(
         modifier = modifier.onGloballyPositioned { onBoundsChange?.invoke(it.boundsInRoot()) },
         enableDismissFromStartToEnd = false,
         backgroundContent = {
-            val target = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) Danger else Color.Transparent
+            var bgW by remember { mutableStateOf(1f) }
+            val off = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+            val progress = (kotlin.math.abs(off) / (bgW * 0.62f)).coerceIn(0f, 1f)
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(target).padding(horizontal = 20.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { bgW = it.width.toFloat().coerceAtLeast(1f) }
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Danger.copy(alpha = progress))
+                    .padding(horizontal = 24.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Delete, "Delete", tint = Color.White)
-                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
-                }
+                Icon(
+                    Icons.Default.Delete, "Delete",
+                    tint = Color.White.copy(alpha = progress),
+                    modifier = Modifier
+                        .size((18 + 8 * progress).dp)
+                        .graphicsLayer { scaleX = 0.8f + 0.4f * progress; scaleY = 0.8f + 0.4f * progress }
+                )
             }
         }
     ) {
@@ -355,7 +367,13 @@ fun TransactionRow(
                 .fillMaxWidth()
                 .graphicsLayer { scaleX = rowScale; scaleY = rowScale }
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                .background(
+                    androidx.compose.ui.graphics.lerp(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        0.55f
+                    )
+                )
                 .clickable(interactionSource = rowInteraction, indication = null) { onClick() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically

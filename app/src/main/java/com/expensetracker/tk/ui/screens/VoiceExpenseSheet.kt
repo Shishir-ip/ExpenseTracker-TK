@@ -2,9 +2,17 @@ package com.expensetracker.tk.ui.screens
 
 import android.Manifest
 import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -36,6 +44,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -57,15 +67,15 @@ import com.expensetracker.tk.data.VoiceParser
 import com.expensetracker.tk.state.AppState
 import com.expensetracker.tk.ui.components.rememberHaptic
 import com.expensetracker.tk.ui.theme.AiGlow
-import com.expensetracker.tk.ui.theme.Success
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * Speak an expense ("lunch 120 and bus 50 yesterday"), review the parsed drafts,
- * save. Uses the AI model for parsing when a key is configured, keyword fallback
- * otherwise. Speech recognition uses the system dialog (no mic permission needed).
+ * save. Uses the on-device SpeechRecognizer (works on phones without the Google
+ * voice dialog), your AI key for parsing when online, keyword fallback offline.
+ * A typed input is always available as a fallback.
  */
 @Composable
 fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
@@ -74,10 +84,12 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
     val haptic = rememberHaptic()
 
     var transcript by remember { mutableStateOf<String?>(null) }
+    var partial by remember { mutableStateOf<String?>(null) }
+    var listening by remember { mutableStateOf(false) }
     var drafts by remember { mutableStateOf(listOf<VoiceParser.Draft>()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var savedCount by remember { mutableStateOf(0) }
+    var typed by remember { mutableStateOf("") }
 
     val process: (String) -> Unit = { text ->
         scope.launch {
@@ -99,46 +111,95 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
         }
     }
 
-    val recognizer = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val text = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (text.isNullOrBlank()) {
-            error = "Didn't catch that — tap the mic to try again"
-        } else {
-            transcript = text
-            process(text)
+    // ---- on-device speech recognizer (no external activity needed) ----
+    val speech = remember {
+        try {
+            if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null
+        } catch (e: Exception) { null }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                speech?.destroy()
+            } catch (e: Exception) { /* already gone */ }
         }
     }
 
     fun startListening() {
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(context)) {
-            error = "Voice recognition isn't available on this phone — type instead:"
+        if (speech == null || !SpeechRecognizer.isRecognitionAvailable(context)) {
+            error = "Voice input isn't available on this phone — type it below instead:"
             return
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Say e.g. \"lunch 120 and bus 50 yesterday\"")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
+        speech.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                listening = true; error = null; partial = null
+            }
+
+            override fun onBeginningOfSpeech() {}
+
+            override fun onRmsChanged(rmsdB: Float) {}
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                listening = false
+            }
+
+            override fun onError(err: Int) {
+                listening = false
+                error = when (err) {
+                    6 -> "Didn't hear anything — try again"
+                    7 -> "No speech matched — try again"
+                    8 -> "Recognition service is busy — try again in a moment"
+                    9 -> "Microphone permission is missing"
+                    else -> "Voice service error — type it below instead"
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                listening = false
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (text.isNullOrBlank()) {
+                    error = "Didn't catch that — tap the mic to try again"
+                } else {
+                    transcript = text
+                    partial = null
+                    process(text)
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let {
+                    partial = it
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
         try {
-            recognizer.launch(intent)
+            speech.startListening(intent)
         } catch (e: Exception) {
-            error = "Couldn't open voice input — type instead:"
+            error = "Voice input failed to start — type it below instead:"
         }
     }
 
-    // start listening as soon as the sheet opens (assistant shortcut flows straight here)
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             startListening()
         } else {
-            error = "Microphone access is needed for voice logging. Grant it in Settings → Apps → Expense Tracker → Permissions, then tap the mic."
+            error = "Microphone access is needed for voice logging. Grant it in Settings → Apps → Expense Tracker → Permissions, or type below."
         }
     }
 
     fun ensureMicAndStart() {
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-            context, android.Manifest.permission.RECORD_AUDIO
+            context, Manifest.permission.RECORD_AUDIO
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (granted) startListening() else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+        if (granted) startListening() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     // start listening as soon as the sheet opens (asks mic permission first)
@@ -166,7 +227,24 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
         }
 
-        transcript?.let {
+        if (listening) {
+            val pulse = rememberInfiniteTransition(label = "mic")
+            val scale by pulse.animateFloat(
+                initialValue = 1f, targetValue = 1.25f,
+                animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+                label = "pulse"
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(
+                    Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(26.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+                )
+                Text("Listening… speak now", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        val shown = partial ?: transcript
+        shown?.let {
             Text(
                 "\"$it\"",
                 style = MaterialTheme.typography.bodyMedium,
@@ -198,7 +276,6 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
                 onSave = {
                     haptic()
                     state.addExpense(d.title.ifBlank { "Voice expense" }, d.amount, d.category, d.date, "", false)
-                    savedCount++
                     drafts = drafts.filterIndexed { i, _ -> i != idx }
                     if (drafts.isEmpty()) {
                         onClose()
@@ -211,7 +288,7 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
             OutlinedButton(onClick = { ensureMicAndStart() }, enabled = !busy) {
                 Icon(Icons.Default.Mic, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(if (transcript == null) "Listen again" else "Say another")
+                Text(if (transcript == null) "Listen again" else "Say another", maxLines = 1)
             }
             if (drafts.size > 1) {
                 Button(
@@ -227,10 +304,33 @@ fun VoiceExpenseSheet(state: AppState, currency: String, onClose: () -> Unit) {
                 ) {
                     Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Save all (${drafts.size})")
+                    Text("Save all (${drafts.size})", maxLines = 1)
                 }
             }
         }
+
+        // typed fallback — always available
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { typed = it },
+            placeholder = { Text("Or type: lunch 120 and bus 50") },
+            trailingIcon = {
+                IconButton(onClick = {
+                    if (typed.isNotBlank()) {
+                        val t = typed.trim()
+                        typed = ""
+                        transcript = t
+                        process(t)
+                    }
+                }, enabled = typed.isNotBlank()) {
+                    Icon(Icons.Default.CheckCircle, "Parse", tint = MaterialTheme.colorScheme.primary)
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Text(
             if (state.prefs.openRouterKey.isNotBlank())

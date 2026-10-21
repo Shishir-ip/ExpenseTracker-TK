@@ -39,6 +39,11 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tracker.db", null, DB_VE
             """CREATE TABLE budgets(
             category TEXT PRIMARY KEY, amount REAL NOT NULL, year_month TEXT DEFAULT '')"""
         )
+        db.execSQL(
+            """CREATE TABLE trash(
+            id TEXT PRIMARY KEY, type TEXT NOT NULL, payload TEXT NOT NULL,
+            deleted_at INTEGER NOT NULL)"""
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) {
@@ -46,9 +51,16 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tracker.db", null, DB_VE
             db.execSQL("ALTER TABLE expenses ADD COLUMN recur_days INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE expenses ADD COLUMN recur_parent TEXT DEFAULT ''")
         }
+        if (oldV < 3) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS trash(
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, payload TEXT NOT NULL,
+                deleted_at INTEGER NOT NULL)"""
+            )
+        }
     }
 
-    companion object { const val DB_VERSION = 2 }
+    companion object { const val DB_VERSION = 3 }
 
     // ---------- expenses ----------
 
@@ -122,6 +134,33 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tracker.db", null, DB_VE
 
     fun purgeDeletedExpenses() {
         writableDatabase.execSQL("DELETE FROM expenses WHERE deleted=1 AND dirty=0")
+    }
+
+    // ---------- trash (deleted items kept 30 days) ----------
+
+    fun trashInsert(id: String, type: String, payload: String, deletedAt: Long) {
+        val cv = ContentValues().apply {
+            put("id", id); put("type", type); put("payload", payload); put("deleted_at", deletedAt)
+        }
+        writableDatabase.insertWithOnConflict("trash", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun trashList(): List<TrashItem> {
+        return readableDatabase.rawQuery(
+            "SELECT id, type, payload, deleted_at FROM trash ORDER BY deleted_at DESC", null
+        ).use { c ->
+            ArrayList<TrashItem>().apply {
+                while (c.moveToNext()) add(TrashItem(c.getString(0), c.getString(1), c.getString(2), c.getLong(3)))
+            }
+        }
+    }
+
+    fun trashDelete(id: String) {
+        writableDatabase.delete("trash", "id=?", arrayOf(id))
+    }
+
+    fun trashPurgeOlderThan(cutoff: Long) {
+        writableDatabase.delete("trash", "deleted_at < ?", arrayOf(cutoff.toString()))
     }
 
     /** Undo a soft delete. Returns false if the row was already purged. */
@@ -314,3 +353,12 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tracker.db", null, DB_VE
         return count
     }
 }
+
+
+/** An item sitting in the 30-day trash. */
+data class TrashItem(
+    val id: String,
+    val type: String,      // "expense" | "borrow"
+    val payload: String,   // full row as JSON
+    val deletedAt: Long
+)

@@ -865,7 +865,7 @@ private fun periodLabel(p: Int) = when (p) { 0 -> "THIS MONTH"; 1 -> "30 DAYS"; 
 fun RecentTxnsCard(state: AppState, exps: List<Expense>, currency: String, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit, onAdd: () -> Unit) {
     SectionCard {
         CardHeader("Recent Transactions", Icons.Default.ReceiptLong, MaterialTheme.colorScheme.primary,
-            trailing = { Text("swipe to delete", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) })
+            trailing = { Text("swipe left to delete", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) })
         if (exps.isEmpty()) {
             EmptyState(Icons.Default.ReceiptLong, "No transactions yet", "Tap + to add your first expense", illustration = R.drawable.ill_wallet)
         } else {
