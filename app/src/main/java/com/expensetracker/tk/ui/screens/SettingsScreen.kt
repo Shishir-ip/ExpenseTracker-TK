@@ -99,6 +99,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.format.DateTimeFormatter
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -297,9 +298,6 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
 
         // ================= QUICK PRESETS =================
         PresetsSection(state)
-
-        // ================= APP LOCK =================
-        AppLockSection(state, onLockChanged)
 
         // ================= NOTIFICATIONS =================
         NotificationSection(state)
@@ -737,92 +735,6 @@ fun PresetsSection(state: AppState) {
 }
 
 // ============================================================
-// APP LOCK
-// ============================================================
-@Composable
-fun AppLockSection(state: AppState, onLockChanged: (Boolean) -> Unit) {
-    val prefs = state.prefs
-    var enabled by remember { mutableStateOf(prefs.lockEnabled) }
-    var biometric by remember { mutableStateOf(prefs.lockBiometric) }
-    var pin1 by remember { mutableStateOf("") }
-    var pin2 by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var done by remember { mutableStateOf<String?>(null) }
-
-    val ctx = LocalContext.current
-    val hasBiometricHardware = remember {
-        androidx.biometric.BiometricManager.from(ctx)
-            .canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
-                androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
-    }
-
-    SectionCard2("App lock (optional)", Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary) {
-        Text("The app is unlocked by default — no lock, no PIN, just like you asked. Turn this on only if you want a PIN/biometric gate when opening the app.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Require unlock on open", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Switch(checked = enabled, onCheckedChange = { on ->
-                if (!on) {
-                    prefs.lockEnabled = false
-                    enabled = false
-                    onLockChanged(false)
-                    done = "App lock disabled"
-                } else {
-                    if (pin1.length == 4 && pin1 == pin2) {
-                        prefs.lockPinHash = prefs.hashPin(pin1)
-                        prefs.lockEnabled = true
-                        enabled = true
-                        onLockChanged(true)
-                        error = null
-                        done = "App lock enabled — PIN saved"
-                    } else {
-                        enabled = false
-                        error = "Enter and confirm a 4-digit PIN below first"
-                    }
-                }
-            })
-        }
-        if (enabled || pin1.isNotEmpty() || pin2.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = pin1,
-                    onValueChange = { pin1 = it.filter(Char::isDigit).take(4) },
-                    label = { Text("New 4-digit PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = pin2,
-                    onValueChange = { pin2 = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Confirm PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f)
-                )
-            }
-        }
-        if (hasBiometricHardware) {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Allow biometric unlock", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text("Fingerprint / face instead of typing the PIN", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = biometric, onCheckedChange = {
-                    biometric = it
-                    prefs.lockBiometric = it
-                })
-            }
-        }
-        error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
-        done?.let { Text(it, color = com.expensetracker.tk.ui.theme.Success, style = MaterialTheme.typography.bodySmall) }
-    }
-}
-
-// ============================================================
 // NOTIFICATIONS
 // ============================================================
 @Composable
@@ -971,64 +883,67 @@ fun DataSection(state: AppState) {
         HorizontalDivider()
         Spacer(Modifier.height(14.dp))
 
-        // ---- auto local backup ----
+        // ---- auto local backup (app-private folder — no folder picker, can't crash) ----
         val prefs = state.prefs
         var autoBackup by remember { mutableStateOf(prefs.autoBackup) }
         var lastBackupTick by remember { mutableStateOf(prefs.lastBackup) }
 
-        val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    )
-                } catch (e: Exception) { /* some providers disallow; still usable this session */ }
-                prefs.backupDir = uri.toString()
-                prefs.autoBackup = true
-                autoBackup = true
-                com.expensetracker.tk.data.Backup.schedule(context)
-                message = "Auto-backup enabled — weekly JSON snapshots"
-            }
-        }
-
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Auto local backup", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text("Weekly JSON snapshot to a folder you pick — works even without Supabase.",
+                Text("Automatic weekly snapshot of all your data (expenses, budgets, borrow/lend) inside the app's private storage. Works even without Supabase. Restore anytime with Import.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = autoBackup, onCheckedChange = { on ->
-                if (on) {
-                    treePicker.launch(null)
-                } else {
-                    prefs.autoBackup = false
-                    autoBackup = false
-                    com.expensetracker.tk.data.Backup.schedule(context)
-                    message = "Auto-backup off"
-                }
+                prefs.autoBackup = on
+                autoBackup = on
+                com.expensetracker.tk.data.Backup.schedule(context)
+                message = if (on) "Auto-backup on — weekly snapshots" else "Auto-backup off"
             })
         }
         if (autoBackup) {
             Spacer(Modifier.height(6.dp))
             Text(
-                if (lastBackupTick > 0)
+                (if (lastBackupTick > 0)
                     "Last backup: " + java.time.Instant.ofEpochMilli(lastBackupTick)
                         .atZone(java.time.ZoneId.systemDefault())
                         .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm"))
-                else "No backup written yet",
+                else "No backup written yet") + " · keeps the latest 8 snapshots",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(onClick = {
-                scope.launch {
-                    val ok = withContext(Dispatchers.IO) { com.expensetracker.tk.data.Backup.writeBackup(context) }
-                    if (ok) {
-                        lastBackupTick = prefs.lastBackup
-                        message = "Backed up ✓"
-                    } else message = "Backup failed — check the folder permission"
-                }
-            }) { Text("Back up now") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        val file = withContext(Dispatchers.IO) { com.expensetracker.tk.data.Backup.writeBackup(context) }
+                        if (file != null) {
+                            lastBackupTick = prefs.lastBackup
+                            message = "Backed up: " + file.name
+                        } else message = "Backup failed"
+                    }
+                }) { Text("Back up now") }
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        val file = withContext(Dispatchers.IO) { com.expensetracker.tk.data.Backup.latestBackupFile(context) }
+                        if (file != null) {
+                            try {
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context, context.packageName + ".fileprovider", file
+                                )
+                                val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "application/json"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    android.content.Intent.createChooser(share, "Share backup")
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (e: Exception) { message = "Share failed: " + e.message?.take(80) }
+                        } else message = "No backup yet — tap Back up now first"
+                    }
+                }) { Text("Share latest") }
+            }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     }
