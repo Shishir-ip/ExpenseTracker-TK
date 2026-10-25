@@ -70,6 +70,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.expensetracker.tk.R
 import com.expensetracker.tk.data.Categories
+import java.time.YearMonth
+import com.expensetracker.tk.ui.components.MonthCalendarHeatmap
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ChevronLeft
 import com.expensetracker.tk.data.Expense
 import com.expensetracker.tk.state.AppState
 import com.expensetracker.tk.ui.components.CategoryIcon
@@ -105,6 +109,9 @@ fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geo
     var showDatePicker by remember { mutableStateOf(false) }
     var pickingStart by remember { mutableStateOf(true) }
     var selectedId by remember { mutableStateOf<String?>(null) }
+    var viewMode by remember { mutableStateOf(0) } // 0 list, 1 calendar
+    var calMonth by remember { mutableStateOf(YearMonth.now()) }
+    var calDay by remember { mutableStateOf<String?>(null) }
     val haptic = rememberHaptic()
     val uiState = state.ui.collectAsState().value
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -177,7 +184,19 @@ fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geo
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
                 TextButton(onClick = { bulkMode = false; selected = emptySet() }) { Text("Done") }
             } else {
-                IconButton(onClick = { bulkMode = true }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = viewMode == 0,
+                        onClick = { viewMode = 0 },
+                        label = { Text("List", maxLines = 1) }
+                    )
+                    FilterChip(
+                        selected = viewMode == 1,
+                        onClick = { viewMode = 1; bulkMode = false },
+                        label = { Text("Calendar", maxLines = 1) }
+                    )
+                }
+                IconButton(onClick = { bulkMode = true }, enabled = viewMode == 0) {
                     Icon(Icons.Default.Checklist, "Bulk select", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -377,7 +396,76 @@ fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geo
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (filtered.isEmpty()) {
+            if (viewMode == 1) {
+                // ---------- calendar month view ----------
+                item {
+                    val current = YearMonth.now()
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { calMonth = calMonth.minusMonths(1) }, enabled = calMonth.isAfter(YearMonth.of(2015, 1))) {
+                                Icon(Icons.Default.ChevronLeft, "Previous month")
+                            }
+                            Text(
+                                "${AppState.MONTHS[calMonth.monthValue - 1]} ${calMonth.year}",
+                                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { calMonth = calMonth.plusMonths(1) }, enabled = calMonth.isBefore(current)) {
+                                Icon(Icons.Default.ChevronRight, "Next month")
+                            }
+                        }
+                        val monthStr = "%04d-%02d".format(calMonth.year, calMonth.monthValue)
+                        val dayTotals = remember(exps, calMonth) {
+                            exps.filter { it.date.startsWith(monthStr) }
+                                .groupBy { it.date }.mapValues { (_, v) -> v.sumOf { it.amount } }
+                        }
+                        MonthCalendarHeatmap(dayTotals, calMonth.year, calMonth.monthValue, currency,
+                            onDayClick = { d -> calDay = if (calDay == d) null else d })
+                    }
+                }
+                calDay?.let { dstr ->
+                    item {
+                        val dayExps = exps.filter { it.date == dstr }
+                        SectionCard {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        try {
+                                            val d = AppState.parseDate(dstr)
+                                            "${d.dayOfMonth} ${AppState.MONTHS[d.monthValue - 1]} ${d.year}"
+                                        } catch (e: Exception) { dstr },
+                                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        "$currency${AppState.fmtInt(dayExps.sumOf { it.amount })} · ${dayExps.size} transactions",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(onClick = { calDay = null }) { Text("Close") }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            if (dayExps.isEmpty()) {
+                                Text("No expenses that day", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    dayExps.sortedByDescending { it.amount }.forEach { e ->
+                                        TransactionRow(e, currency, onClick = { onEdit(e.id, null) }, onDelete = {
+                                            val stash = state.stashExpenseForDelete(e.id)
+                                            if (stash != null) {
+                                                UndoHost.post("Deleted " + stash.title.take(24),
+                                                    undo = { state.undoDeleteExpense(stash) },
+                                                    onDismissed = { state.finalizeExpenseDelete(stash) })
+                                            }
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(80.dp)) }
+            } else if (filtered.isEmpty()) {
                 item {
                     SectionCard { EmptyState(Icons.Default.Search, "No transactions found", "Try changing the search or filters", illustration = R.drawable.ill_wallet) }
                 }

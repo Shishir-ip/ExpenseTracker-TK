@@ -19,7 +19,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.drawText
@@ -71,18 +77,52 @@ fun DonutChart(
     var played by remember { mutableStateOf(false) }
     LaunchedEffect(slices) { played = true }
     val sweep by animateFloatAsState(if (played) 1f else 0f, tween(900, easing = FastOutSlowInEasing), label = "sweep")
+    val pop by animateFloatAsState(
+        targetValue = if (selectedSlice != null) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f), label = "pop"
+    )
 
     Column(modifier) {
         Box(Modifier.fillMaxWidth().height(190.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.size(190.dp)) {
+            Canvas(
+                Modifier
+                    .size(190.dp)
+                    .pointerInput(slices) {
+                        detectTapGestures { offset ->
+                            if (slices.isEmpty()) return@detectTapGestures
+                            val cx = size.width / 2f
+                            val cy = size.height / 2f
+                            val dx = offset.x - cx
+                            val dy = offset.y - cy
+                            val r = kotlin.math.sqrt(dx * dx + dy * dy)
+                            val ringMid = minOf(size.width, size.height) / 2f - 17.dp.toPx()
+                            if (kotlin.math.abs(r - ringMid) <= 26.dp.toPx()) {
+                                var deg = Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()).toFloat()
+                                deg = (deg + 90f + 360f) % 360f  // 0 = 12 o'clock, clockwise
+                                val total = slices.sumOf { it.value }.toFloat()
+                                if (total > 0f) {
+                                    var acc = 0f
+                                    var found: DonutSlice? = null
+                                    for (sl in slices) {
+                                        val a = (sl.value.toFloat() / total) * 360f
+                                        if (deg >= acc && deg < acc + a) { found = sl; break }
+                                        acc += a
+                                    }
+                                    found?.let { onSliceClick?.invoke(it) }
+                                }
+                            }
+                        }
+                    }
+            ) {
                 val total = slices.sumOf { it.value }.toFloat()
                 var start = -90f
-                val stroke = Stroke(width = 34.dp.toPx(), cap = StrokeCap.Butt)
+                val baseW = 34.dp.toPx()
+                val selW = 46.dp.toPx()
                 if (total <= 0f) {
                     drawArc(
                         color = Color(0x22000000),
                         startAngle = 0f, sweepAngle = 360f, useCenter = false,
-                        style = stroke
+                        style = Stroke(width = baseW, cap = StrokeCap.Butt)
                     )
                 } else {
                     // 4-degree gaps between slices for a cleaner, modern look
@@ -90,11 +130,14 @@ fun DonutChart(
                     slices.forEach { sl ->
                         val angle = (sl.value.toFloat() / total) * 360f * sweep
                         val drawn = angle - gap
+                        val isSel = selectedSlice != null && sl.label == selectedSlice.label
                         if (drawn > 0.5f) {
+                            // emphasis = thicker ring segment; arcs never move, so no overlap
+                            val w = if (isSel) baseW + (selW - baseW) * pop else baseW
                             drawArc(
                                 color = sl.color,
                                 startAngle = start + gap / 2f, sweepAngle = drawn, useCenter = false,
-                                style = stroke
+                                style = Stroke(width = w, cap = StrokeCap.Butt)
                             )
                         }
                         start += angle
@@ -133,6 +176,10 @@ fun DonutChart(
                     val pct = if (slices.sumOf { it.value } > 0) (s.value / slices.sumOf { it.value } * 100).toInt() else 0
                     Spacer(Modifier.width(6.dp))
                     Text("$pct%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isSelected) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.Check, null, tint = s.color, modifier = Modifier.size(14.dp))
+                    }
                 }
             }
         }
@@ -171,7 +218,7 @@ fun BarChart(bars: List<BarEntry>, modifier: Modifier = Modifier, currency: Stri
                         Modifier
                             .fillMaxWidth()
                             .height(h.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
                             .background(
                                 if (b.highlight) Brush.verticalGradient(listOf(Color(0xFF818CF8), Color(0xFF6366F1)))
                                 else Brush.verticalGradient(listOf(Color(0xFFA5B4FC), Color(0xFF818CF8)))

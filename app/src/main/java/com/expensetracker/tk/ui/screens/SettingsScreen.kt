@@ -218,6 +218,8 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
             }
         }
 
+        SectionLabel("Cloud & AI")
+
         // ================= CLOUD (SUPABASE) =================
         CloudSection(state)
 
@@ -226,6 +228,8 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
 
         // ================= SQL SETUP GUIDE =================
         SqlGuideSection()
+
+        SectionLabel("Looks & feel")
 
         // ================= APPEARANCE =================
         SectionCard2("Appearance", Icons.Default.Palette, MaterialTheme.colorScheme.primary) {
@@ -299,11 +303,17 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
         // ================= QUICK PRESETS =================
         PresetsSection(state)
 
+        SectionLabel("Alerts")
+
         // ================= NOTIFICATIONS =================
         NotificationSection(state)
 
+        SectionLabel("Data & safety")
+
         // ================= DATA: EXPORT / IMPORT / SYNC =================
         DataSection(state)
+
+        SectionLabel("Data & safety")
 
         // ---------- trash (deleted items kept 30 days) ----------
         SectionCard2("Trash", Icons.Default.AutoDelete, Danger) {
@@ -364,6 +374,17 @@ fun SettingsScreen(state: AppState, onLockChanged: (Boolean) -> Unit) {
         }
     }
     }
+}
+
+@Composable
+fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.ExtraBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp)
+    )
 }
 
 // ============================================================

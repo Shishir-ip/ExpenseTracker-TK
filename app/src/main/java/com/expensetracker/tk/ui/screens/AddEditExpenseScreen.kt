@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -204,6 +205,41 @@ fun AddEditExpenseScreen(state: AppState, editId: String?, origin: androidx.comp
             Spacer(Modifier.height(14.dp))
             Text("Category", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
+
+            // recently used — your 3 most common categories, one tap away
+            val recentExpenses = state.ui.collectAsState().value.expenses
+            val recentCats = remember(recentExpenses.size) {
+                recentExpenses.take(30)
+                    .groupingBy { it.category }.eachCount()
+                    .entries.sortedByDescending { it.value }
+                    .take(3).map { it.key }
+            }
+            if (recentCats.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    recentCats.forEach { cid ->
+                        val c = Categories.byId(cid)
+                        val active = category == cid
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (active) Color(c.color).copy(alpha = 0.2f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                                .clickable { category = cid }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            CategoryIcon(cid, 14.dp, Color(c.color))
+                            Text(c.name, style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (active) Color(c.color) else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
 
             // category grid 4 per row
             Categories.all.chunked(4).forEach { rowCats ->
