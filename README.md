@@ -37,9 +37,11 @@ Most expense trackers hold your data hostage or require an account. **Expense Tr
 
 <div align="center">
 
-| Home | Insights | History |
-|:---:|:---:|:---:|
-| sortable dashboard, quick add, burn-down | AI analysis, heatmaps, year view | sticky day headers, bulk edit |
+| Home | History |
+|:---:|:---:|
+| <img src="screenshots/home.png" width="250"/> | <img src="screenshots/history.png" width="250"/> |
+| **Insights** | **Borrow & Lend** |
+| <img src="screenshots/insights.png" width="250"/> | <img src="screenshots/borrow.png" width="250"/> |
 
 </div>
 
