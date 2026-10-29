@@ -80,6 +80,16 @@ object Recur {
             val created = runForToday(app)
             if (created > 0) {
                 app.sync.requestSync()
+                // tell the user what was logged for them
+                val today = LocalDate.now().toString()
+                val logged = app.db.allExpenses().filter { it.recurParent != null && it.date == today }
+                val body = logged.joinToString(", ") { it.title } .take(180)
+                com.expensetracker.tk.notify.Notify.show(
+                    applicationContext, 3001,
+                    com.expensetracker.tk.notify.Notify.CH_DAILY,
+                    "Recurring expense logged" + if (created > 1) " ($created)" else "",
+                    body.ifBlank { "Your recurring expenses were added for today." }
+                )
             }
             return Result.success()
         }

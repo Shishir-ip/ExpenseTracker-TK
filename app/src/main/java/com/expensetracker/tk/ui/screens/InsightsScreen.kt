@@ -78,7 +78,7 @@ import java.time.LocalDate
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun InsightsScreen(state: AppState) {
+fun InsightsScreen(state: AppState, onOpenMonth: (String) -> Unit = {}) {
     val ui = state.ui.collectAsState().value
     val currency = state.prefs.currencySymbol
     val exps = state.calcExpenses()
@@ -268,6 +268,10 @@ fun InsightsScreen(state: AppState) {
                                             .weight(1f)
                                             .clip(RoundedCornerShape(12.dp))
                                             .background(bg)
+                                            .clickable {
+                                                state.pendingUiAction.value = "history:%04d-%02d".format(year, m + 1)
+                                                onOpenMonth("%04d-%02d".format(year, m + 1))
+                                            }
                                             .padding(vertical = 8.dp, horizontal = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {

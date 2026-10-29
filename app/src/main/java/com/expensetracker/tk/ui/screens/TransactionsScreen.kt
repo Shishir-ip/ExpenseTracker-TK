@@ -12,6 +12,7 @@ import com.expensetracker.tk.data.SavedFilter
 import com.expensetracker.tk.data.SyncState
 import com.expensetracker.tk.UndoHost
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +58,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -112,9 +119,22 @@ fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geo
     var viewMode by remember { mutableStateOf(0) } // 0 list, 1 calendar
     var calMonth by remember { mutableStateOf(YearMonth.now()) }
     var calDay by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val haptic = rememberHaptic()
+
+    // Year Overview month tap: jump into calendar view at that month
+    LaunchedEffect(state.pendingUiAction.value) {
+        val a = state.pendingUiAction.value
+        if (a?.startsWith("history:") == true) {
+            runCatching { calMonth = YearMonth.parse(a.substringAfter("history:")) }
+            viewMode = 1
+            calDay = null
+            state.pendingUiAction.value = null
+        }
+    }
     val uiState = state.ui.collectAsState().value
     val wide = LocalConfiguration.current.screenWidthDp >= 700
+    val context = LocalContext.current
 
     val filtered = remember(exps, search, selectedCats, amtMin, amtMax, sort, preset, startD, endD) {
         val lower = search.lowercase()
@@ -195,6 +215,34 @@ fun TransactionsScreen(state: AppState, onEdit: (String, androidx.compose.ui.geo
                         onClick = { viewMode = 1; bulkMode = false },
                         label = { Text("Calendar", maxLines = 1) }
                     )
+                    if (filtered.isNotEmpty()) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val file = withContext(Dispatchers.IO) {
+                                    val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                                    val f = java.io.File(dir, "filtered-expenses-" + System.currentTimeMillis() + ".csv")
+                                    f.writeText(state.exportCsvFrom(filtered))
+                                    f
+                                }
+                                try {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        context, context.packageName + ".fileprovider", file
+                                    )
+                                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/csv"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(
+                                        android.content.Intent.createChooser(share, "Share filtered CSV")
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (e: Exception) { /* no share target */ }
+                            }
+                        }) {
+                            Icon(Icons.Default.Share, "Export filtered CSV", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
                 IconButton(onClick = { bulkMode = true }, enabled = viewMode == 0) {
                     Icon(Icons.Default.Checklist, "Bulk select", tint = MaterialTheme.colorScheme.onSurfaceVariant)

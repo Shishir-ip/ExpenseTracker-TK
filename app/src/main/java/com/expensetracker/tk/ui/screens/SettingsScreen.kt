@@ -975,6 +975,7 @@ fun DataSection(state: AppState) {
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TrashSheet(state: AppState, onClose: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val currency = state.prefs.currencySymbol
     var items by remember { mutableStateOf(state.trashItems()) }
 
@@ -986,6 +987,17 @@ fun TrashSheet(state: AppState, onClose: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Trash", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+            if (items.isNotEmpty()) {
+                TextButton(onClick = {
+                    val n = state.restoreAllFromTrash()
+                    items = state.trashItems()
+                    if (n > 0) {
+                        android.widget.Toast.makeText(
+                            context, "Restored $n item(s)", android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }) { Text("Restore all") }
+            }
             TextButton(onClick = onClose) { Text("Close") }
         }
         Text(

@@ -12,6 +12,87 @@ import java.time.LocalDate
 /** One-page A4 monthly statement: stats, top categories, recent transactions. */
 object ReportGenerator {
 
+    /**
+     * Square share card (1080x1080 PNG): donut + top categories + credit.
+     * slices = Triple(label, colorLong, value).
+     */
+    fun chartImage(
+        context: Context,
+        title: String,
+        subtitle: String,
+        slices: List<Triple<String, Long, Double>>,
+        total: Double,
+        currency: String
+    ): File? {
+        return try {
+            val W = 1080
+            val H = 1080
+            val bmp = android.graphics.Bitmap.createBitmap(W, H, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(bmp)
+            c.drawColor(Color.parseColor("#0F172A"))
+
+            fun paint(sizePx: Float, bold: Boolean, color: Int): Paint = Paint().apply {
+                isAntiAlias = true; textSize = sizePx; this.color = color
+                typeface = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
+            }
+            val white = paint(46f, true, Color.WHITE)
+            val sub = paint(30f, false, Color.parseColor("#94A3B8"))
+            val label = paint(34f, true, Color.WHITE)
+            val money = paint(34f, true, Color.WHITE)
+            val center = paint(30f, true, Color.parseColor("#94A3B8"))
+            val big = paint(72f, true, Color.WHITE)
+
+            c.drawText(title, 60f, 110f, white)
+            c.drawText(subtitle, 60f, 170f, sub)
+
+            // donut
+            val donut = Paint().apply {
+                style = Paint.Style.STROKE; strokeWidth = 100f; isAntiAlias = true
+            }
+            var start = -90f
+            if (total > 0) {
+                slices.forEach { (_, colorLong, value) ->
+                    val a = (value / total).toFloat() * 360f
+                    val drawn = a - 6f
+                    if (drawn > 1f) {
+                        donut.color = colorLong.toInt()
+                        c.drawArc(240f, 200f, 840f, 800f, start + 3f, drawn, false, donut)
+                    }
+                    start += a
+                }
+            } else {
+                donut.color = Color.parseColor("#334155")
+                c.drawArc(240f, 200f, 840f, 800f, 0f, 360f, false, donut)
+            }
+            c.drawText("TOTAL", 540f, 470f, center)
+            c.drawText("$currency${"%,.0f".format(total)}", 540f, 555f, big)
+
+            // legend
+            var y = 760f
+            slices.take(5).forEach { (name, colorLong, value) ->
+                val dot = Paint().apply { color = colorLong.toInt(); isAntiAlias = true }
+                c.drawCircle(90f, y - 11f, 16f, dot)
+                c.drawText(name, 130f, y, label)
+                val amt = paint(34f, true, Color.WHITE).apply {
+                    textAlign = Paint.Align.RIGHT
+                    c.drawText("$currency${"%,.0f".format(value)}", W - 80f, y, this)
+                }
+                y += 62f
+            }
+
+            // footer
+            c.drawText("Developed by SHISHIR  ·  github.com/Shishir-ip", 60f, H - 50f, sub)
+
+            val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+            val file = File(dir, "spending-share-" + System.currentTimeMillis() + ".png")
+            file.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+            file
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun generate(context: Context, state: AppState): File? {
         return try {
             val ui = state.ui.value

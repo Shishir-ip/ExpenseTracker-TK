@@ -33,6 +33,7 @@ class TrackerApp : Application() {
         com.expensetracker.tk.data.Recur.schedule(this)
         com.expensetracker.tk.data.Backup.schedule(this)
         db.trashPurgeOlderThan(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
+        com.expensetracker.tk.data.AppShortcuts.updateTopPreset(this)
         if (com.expensetracker.tk.data.Recur.runForToday(this) > 0) {
             sync.requestSync()
         }

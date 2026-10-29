@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.DoneAll
@@ -86,8 +87,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -139,6 +142,7 @@ import java.time.LocalDate
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(state: AppState, onAdd: () -> Unit, onEdit: (String, androidx.compose.ui.geometry.Rect?) -> Unit, onOpenSettings: () -> Unit = {}) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val ui = state.ui.collectAsState().value
     val currency = state.prefs.currencySymbol
     val exps = remember(ui.expenses, ui.includeBills) { state.calcExpenses() }
@@ -164,9 +168,25 @@ fun HomeScreen(state: AppState, onAdd: () -> Unit, onEdit: (String, androidx.com
 
     // assistant shortcut / quick tile: "voice" opens the mic sheet right away
     LaunchedEffect(state.pendingUiAction.value) {
-        if (state.pendingUiAction.value == "voice") {
-            state.pendingUiAction.value = null
-            showVoiceSheet = true
+        val action = state.pendingUiAction.value
+        when {
+            action == "voice" -> {
+                state.pendingUiAction.value = null
+                showVoiceSheet = true
+            }
+            action?.startsWith("preset:") == true -> {
+                val pid = action.removePrefix("preset:")
+                val preset = state.ui.value.presets.firstOrNull { it.id == pid }
+                if (preset != null) {
+                    state.addExpense(preset.title, preset.amount, preset.category, AppState.todayStr(), "", false)
+                    android.widget.Toast.makeText(
+                        context,
+                        "Logged " + preset.label + " " + state.prefs.currencySymbol + "%.0f".format(preset.amount),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+                state.pendingUiAction.value = null
+            }
         }
     }
 
@@ -807,10 +827,51 @@ fun ChartCard(state: AppState, exps: List<Expense>, currency: String) {
             .sortedByDescending { it.value }
     }
     val total = filtered.sumOf { it.amount }
+    val scope = rememberCoroutineScope()
 
+    val ctx = LocalContext.current
     SectionCard {
-        CardHeader("Spending by Category", Icons.Default.PieChart, MaterialTheme.colorScheme.primary)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+        CardHeader("Spending by Category", Icons.Default.PieChart, MaterialTheme.colorScheme.primary,
+            trailing = {
+                if (total > 0) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            val file = withContext(Dispatchers.IO) {
+                                com.expensetracker.tk.data.ReportGenerator.chartImage(
+                                    ctx,
+                                    "Spending by Category",
+                                    listOf("This month", "Last 30 days", "All time")[period],
+                                    slices.map { Triple(it.label, it.color.toArgb().toLong(), it.value) },
+                                    total, currency
+                                )
+                            }
+                            if (file != null) {
+                                try {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        ctx, ctx.packageName + ".fileprovider", file
+                                    )
+                                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    ctx.startActivity(
+                                        android.content.Intent.createChooser(share, "Share chart")
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (e: Exception) { /* no share target */ }
+                            }
+                        }
+                    }) {
+                        Icon(
+                            Icons.Default.Share, "Share chart",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            })
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
             listOf("This month", "30 days", "All time").forEachIndexed { i, label ->
                 FilterChip(
                     selected = period == i,

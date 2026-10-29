@@ -280,6 +280,46 @@ class AppState(private val app: TrackerApp) {
         reload()
     }
 
+    /** Restore every item currently in the trash. Returns how many were restored. */
+    fun restoreAllFromTrash(): Int {
+        var count = 0
+        db.trashList().forEach { item ->
+            val o = runCatching { org.json.JSONObject(item.payload) }.getOrNull() ?: return@forEach
+            val now = System.currentTimeMillis()
+            when (item.type) {
+                "expense" -> db.upsertExpense(
+                    Expense(
+                        id = o.getString("id"), title = o.getString("title"),
+                        amount = o.getDouble("amount"), category = o.optString("category", "other"),
+                        date = o.optString("date", AppState.todayStr()), notes = o.optString("notes", ""),
+                        isRecurring = o.optBoolean("is_recurring", false),
+                        createdAt = o.optLong("created_at", now), updatedAt = now,
+                        dirty = true, deleted = false,
+                        recurDays = o.optInt("recur_days", 0),
+                        recurParent = o.optString("recur_parent", "").ifBlank { null }
+                    )
+                )
+                "borrow" -> db.upsertBorrow(
+                    BorrowLend(
+                        id = o.getString("id"), type = o.optString("type", "borrow"),
+                        personName = o.optString("person_name", "?"), amount = o.getDouble("amount"),
+                        date = o.optString("date", AppState.todayStr()),
+                        reminderDate = o.optString("reminder_date", "").ifBlank { null },
+                        status = o.optString("status", "pending"), notes = o.optString("notes", ""),
+                        updatedAt = now, dirty = true, deleted = false
+                    )
+                )
+            }
+            db.trashDelete(item.id)
+            count++
+        }
+        if (count > 0) {
+            reload()
+            app.sync.requestSync()
+        }
+        return count
+    }
+
     /** Reopen a settled borrow/lend record. */
     fun reopenBorrow(id: String) {
         val b = db.getBorrow(id) ?: return
@@ -398,10 +438,13 @@ class AppState(private val app: TrackerApp) {
     fun exportJson(): JSONObject = db.exportJson(prefs.currencySymbol)
 
     /** CSV for Excel/Google Sheets: date, title, category, amount, notes, recurring. */
-    fun exportCsv(): String {
+    fun exportCsv(): String = exportCsvFrom(calcExpenses())
+
+    /** CSV for an arbitrary (e.g. currently filtered) list of expenses. */
+    fun exportCsvFrom(list: List<Expense>): String {
         val sb = StringBuilder()
         sb.append("Date,Title,Category,Amount,Notes,Recurring\n")
-        calcExpenses().sortedWith(compareBy({ it.date }, { it.createdAt })).forEach { e ->
+        list.sortedWith(compareBy({ it.date }, { it.createdAt })).forEach { e ->
             val cat = Categories.byId(e.category).name
             sb.append(escapeCsv(e.date)).append(',')
                 .append(escapeCsv(e.title)).append(',')

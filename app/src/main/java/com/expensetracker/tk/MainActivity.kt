@@ -109,6 +109,7 @@ class MainActivity : FragmentActivity() {
             "com.expensetracker.tk.INSIGHTS" -> state.pendingUiAction.value = "insights"
             "com.expensetracker.tk.VOICE" -> state.pendingUiAction.value = "voice"
             "com.expensetracker.tk.HISTORY" -> state.pendingUiAction.value = "history"
+            "com.expensetracker.tk.LOG_PRESET" -> state.pendingUiAction.value = "preset:" + (intent.getStringExtra("preset_id") ?: "")
         }
         setContent {
             // observe theme so Settings changes apply instantly (was: read once at startup)
@@ -256,6 +257,16 @@ fun Root() {
                         }
                         state.pendingUiAction.value = null
                     }
+                    else -> {
+                        // "preset:<id>" is consumed by HomeScreen (one-tap log)
+                        val a = state.pendingUiAction.value
+                        if (a != null && a.startsWith("preset:")) {
+                            nav.navigate("home") {
+                                popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    }
                 }
             }
             NavHost(
@@ -284,7 +295,15 @@ fun Root() {
                     )
                 }
                 composable("txns") { TransactionsScreen(state, onEdit = { id, origin -> editExpenseId = id; editOrigin = origin; showAdd = true }) }
-                composable("insights") { InsightsScreen(state) }
+                composable("insights") {
+                    InsightsScreen(state, onOpenMonth = { monthStr ->
+                        state.pendingUiAction.value = "history:" + monthStr
+                        nav.navigate("txns") {
+                            popUpTo(nav.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    })
+                }
                 composable("borrow") { BorrowScreen(state) }
                 composable("settings") {
                     SettingsScreen(state, onLockChanged = { armed -> lockArmed = armed && state.prefs.lockEnabled && state.prefs.lockPinHash.isNotBlank() })
